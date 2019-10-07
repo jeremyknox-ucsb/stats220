@@ -10,6 +10,10 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(ggplot2)
+library(plyr)
+library(MASS)
+library(fitdistrplus)
+library(reshape2)
 ```
 
 1. Write a R function that returns the following dispersion measures:   
@@ -93,19 +97,37 @@ eda.shape <- function(x) {
     plot(density(x))
 }
 
-stdevs <- lapply(pima[c("pregnant","diastolic", "bmi", "age")], sd)
-mads <- lapply(pima[c("pregnant","diastolic", "bmi", "age")], mad)
-meadian_ads <- lapply(pima[c("pregnant","diastolic", "bmi", "age")], median_ad)
-iqrs <- lapply(pima[c("pregnant","diastolic", "bmi", "age")], iqr)
+pima_d <- pima %>% 
+  filter(diastolic > 0)
+pima_b <- pima %>% 
+  filter(diastolic > 0)
+  
+stdevs <- lapply(pima[c("pregnant","age")], sd)
+stdevs_d <- lapply(pima_d[c("diastolic")], sd)
+stdevs_b <- lapply(pima_b[c("bmi")], sd)
+
+mads <- lapply(pima[c("pregnant", "age")], mad)
+mads_d <- lapply(pima_d[c("diastolic")], mad)
+mads_b <- lapply(pima_b[c("bmi")], mad)
+
+median_ads <- lapply(pima[c("pregnant", "age")], median_ad)
+median_ads_d <- lapply(pima_d[c("diastolic")], median_ad)
+median_ads_b <- lapply(pima_b[c("bmi")], median_ad)
+
+iqrs <- lapply(pima[c("pregnant", "age")], iqr)
+iqrs_b <- lapply(pima_d[c("diastolic")], iqr)
+iqrs_d <- lapply(pima_b[c("bmi")], sd)
 
 eda.shape(pima$pregnant)
-eda.shape(pima$diastolic)
-eda.shape(pima$bmi)
+eda.shape(pima_d$diastolic)
+eda.shape(pima_b$bmi)
 eda.shape(pima$age)
 ```
 
-
-
+Distribution of *pregnant* looks like an exponential distribution as seen in the histogram, density plots and QQ plots. There are a few outliers on the high range of *pregnant*.   
+Distribution of *diastolic* look to be normal with slightly heavy tails than expected when removing missing data (0's) as seen in the histogram, density plots and QQ plots. These extreme values can also be seen as outliers in the boxplot.  
+Distribution of *bmi* look to be normal with slightly skewed right than expected when removing missing data (0's) as seen in the histogram, density plots and QQ plots. These extreme values can also be seen as outliers in the boxplot.   
+Distribution of *age* look to be skewed right and possibly more bimodal than normal distribution as seen in the histogram, density plots and QQ plots. These extreme values on the higher range can also be seen as outliers in the boxplot. 
 
 ```{r Problem 3}
 
@@ -121,14 +143,14 @@ qq.shape <- function(x) {
 
 qq.shape(precip)
 qq.shape(log(precip))
-qq.shape(sqrt(precip))
+
 ```
+Normalitiy is plausible and can be seen when *precip* distribution is log transformed. Even with a log transform there looks to be heavier tails than a standard normal distribution.   
 
 
 
-```{r}
-library(MASS)
-library(fitdistrplus)
+
+```{r Problem 4}
 
 trans_fails <- c(4381,3953,2603,2320,1161,3286,6914,4007,3168,
                  2376,7498,3923,9460,4525,2168,1288,5085,2217,
@@ -136,6 +158,8 @@ trans_fails <- c(4381,3953,2603,2320,1161,3286,6914,4007,3168,
                  4732,3330,4159,2537,3814,2157,7683,5539,4839,
                  6052,2420,5556,309,1295,3266,6679,1711,5931)
 
+plotdist(trans_fails, histo=T, demp=T) # look at the raw distribution histogram and cummulative distribution
+descdist(trans_fails, discrete=FALSE, boot=500) # don't know how to interpret this...
 fit_normal <- fitdistr(trans_fails, densfun="normal")
 fit_ln <- fitdistr(trans_fails, densfun="lognormal")
 fit_exp <- fitdistr(trans_fails, densfun="exponential")
@@ -143,7 +167,66 @@ fit_gamma <- fitdistr(log(trans_fails), densfun="gamma")
 
 par(mfrow=c(2,2))
 plot.legend <- c("Normal", "Lognormal", "Exponential", "Gamma")
-denscomp(list(fit_normal), legendtext = plot.legend)
+denscomp(list(fit_normal, fit_ln, fit_exp, fit_gamma), legendtext = plot.legend)
+cdfcomp (list(fit_normal, fit_ln, fit_exp, fit_gamma), legendtext = plot.legend)
+qqcomp  (list(fit_normal, fit_ln, fit_exp, fit_gamma), legendtext = plot.legend)
+ppcomp  (list(fit_normal, fit_ln, fit_exp, fit_gamma), legendtext = plot.legend)
 
 ```
+
+
+
+
+```{r Problem 5}
+set.seed(10)
+
+df_vector <- rexp(n = 5000, rate = 1)
+plotdist(df_vector, histo=T, demp=T)
+
+df =  data.frame(df_vector)
+
+n <- 100
+nr <- nrow(df)
+df_1_50 <- split(df, rep(1:ceiling(nr/n), each=n, length.out=nr))
+
+df <- ldply(df_1_50, data.frame)
+
+listVec <- lapply(df_1_50, c, recursive=TRUE)
+m <- do.call(cbind, listVec)
+
+df_new <- as.data.frame(m)
+
+x<- colMeans(df_new)
+plotdist(x, histo=T, demp=T)
+
+```
+
+
+
+```{r Problem 6}
+
+df_norm <- data.frame(rnorm(n = 600, mean = 10, sd = 5))
+names(df_norm) <- c("col1")
+
+n <- 6
+nr <- nrow(df_norm)
+df_norm_6 <- split(df_norm, rep(1:ceiling(nr/n), each=n, length.out=nr))
+
+df <- ldply(df_norm_6, data.frame)
+
+listVec <- lapply(df_norm_6, c, recursive=TRUE)
+m <- do.call(cbind, listVec)
+
+df_norm_new <- as.data.frame(m)
+
+statistic <- function(x){
+  (mean(x) - 10) / sqrt(var(x)/6)
+}
+df_tranform <- as.data.frame(lapply(df_norm_new, statistic))
+x_norm <- as.vector(t(df_tranform))
+plotdist(x_norm, histo=T, demp=T)
+```
+
+
+
 
